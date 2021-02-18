@@ -49,7 +49,7 @@ class TwitchData {
         }
         else {
             if (data.data.length == 0){
-                alert("streamer not found")
+                //alert("streamer not found")
             }
             else {
                 this.streamerID = data.data[0].id
@@ -97,12 +97,17 @@ function processSlot(data){
     //console.log(slot2)
 }
 async function submitSlot(){
+    twitch.PolyKey = document.getElementById("PolyKey").value
     if (!twitch.PolyKey){
         alert("Please enter you pb2 twitch extension key!")
         return
     }
     await twitch.Populate()
-    if (!twitch.streamerID || !twitch.streamerName || !twitch.TwitchKey) {
+    if (!twitch.streamerID){
+        alert("streamer not found!")
+        return
+    }
+    if (!twitch.streamerName || !twitch.TwitchKey) {
         alert("A field is missing!")
         return
     }
@@ -124,6 +129,10 @@ async function submitSlot(){
             }
         }
     )
+    if (connectResponse.status === 401){
+        alert("invalid twitch extension key!")
+        return
+    }
     let connectJSON = await connectResponse.json()
     console.log(connectJSON)
 
