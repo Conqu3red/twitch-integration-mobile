@@ -1,0 +1,36 @@
+<html>
+  <input type="file" accept=".slot" id="file_input", max="1">
+  <br>
+  <button onclick="getSlot()">Load Slot</button>
+  <div id="slotOutput"></div>
+  <br>
+  <input type="password" placeholder="PB2 Twitch extension key" id=PolyKey>
+  <br>
+  <input type="text" placeholder="Streamer name" id="StreamerName">
+  <button onclick="submitSlot()">Send Bridge</button>
+  <br>
+  Instructions:
+  <ul>
+    <li>Select a slot file</li>
+    <li>Click Load Slot</li>
+    <li>Enter you pb2 twitch extenstion key and the streamers username</li>
+    <li>Press send bridge</li>
+  </ul>
+  <div id="output"></div>
+  
+  <script src="vector.js"></script>
+  <script src="md5.js"></script>
+
+  <script src="PolyBridgeScripts/ByteSerializer.js"></script>
+  
+  <script src="PolyBridgeScripts/BridgeJointProxy.js"></script>
+  <script src="PolyBridgeScripts/BridgeEdgeProxy.js"></script>
+  <script src="PolyBridgeScripts/BridgeSpringProxy.js"></script>
+  <script src="PolyBridgeScripts/PistonProxy.js"></script>
+  <script src="PolyBridgeScripts/BridgeSplitJointProxy.js"></script>
+  <script src="PolyBridgeScripts/HydraulicsControllerPhaseProxy.js"></script>
+  <script src="PolyBridgeScripts/HydraulicsControllerProxy.js"></script>
+
+  <script src="PolyBridgeScripts/BridgeSaveData.js"></script>
+  <script defer src="script.js"></script>
+</html>
