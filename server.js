@@ -3,10 +3,9 @@ const app = express();
 const pako = require('pako');
 const bodyParser = require('body-parser');
 
-// make all the files in 'public' available
 app.use(express.static("public"));
 app.use(bodyParser.raw());
-//console.log(pako.gzip("abcdeef", {to: 'binary'}))
+
 
 app.get("/", (request, response) => {
   response.sendFile(__dirname + "/test.html");
