@@ -18,12 +18,6 @@ app.post("/api/gzip", (request, response) => {
     response.send(Buffer.from(gzipped.buffer))
 })
 
-//app.get("/dreams", (request, response) => {
-//  // express helps us take JS objects and send them as JSON
-//  response.json(dreams);
-//});
-
-// listen for requests :)
 const listener = app.listen(3000, () => {
   console.log("Your app is listening on port " + listener.address().port);
 });
