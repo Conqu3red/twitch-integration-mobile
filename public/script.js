@@ -1,15 +1,7 @@
-logger = {
-    output : document.getElementById("output"),
-    logInfo : function (string) {
-        output.innerText += string + "\n"
-    }
-}
-
-
 class TwitchData {
-    static ClientID = "9bksp3cxt84auuicqxnnuk1y4mhrd6"
-    static ClientSecret = "fvilbl2jku0xixwfmz5euqi4vnml7f"
     constructor(){
+        this.ClientID = "9bksp3cxt84auuicqxnnuk1y4mhrd6"
+        this.ClientSecret = "fvilbl2jku0xixwfmz5euqi4vnml7f"
         this.streamerName = "";
         this.streamerID = ""
         this.TwitchKey = ""
@@ -23,7 +15,7 @@ class TwitchData {
     }
     async getTwitchKey(){
         if (this.TwitchKey) return
-        let response = await fetch("https://id.twitch.tv/oauth2/token?client_id=" + TwitchData.ClientID + "&client_secret=" + TwitchData.ClientSecret + "&grant_type=client_credentials", 
+        let response = await fetch("https://id.twitch.tv/oauth2/token?client_id=" + this.ClientID + "&client_secret=" + this.ClientSecret + "&grant_type=client_credentials", 
             {
                 method: "post"
             }
@@ -39,7 +31,7 @@ class TwitchData {
             method: "get",
             headers: {
                 "Authorization": "Bearer " + this.TwitchKey,
-                "Client-ID": TwitchData.ClientID
+                "Client-ID": this.ClientID
             }
         }
         )
@@ -89,6 +81,8 @@ function processSlot(data){
     let slot = BridgeSaveData.DeserializeBinary(data)
     console.log("Deserialised slot file")
     slot_stored = slot
+    canvasController = recreateCanvasController()
+    updateCanvas()
     //console.log(slot)
     //let serialised = slot.SerializeBinary()
     //console.log("Serialised slot file")
@@ -135,6 +129,10 @@ async function submitSlot(){
     }
     let connectJSON = await connectResponse.json()
     console.log(connectJSON)
+    if (connectResponse.status === 418){
+        alert("An error occured: " + connectJSON.message)
+        return
+    }
 
     
     let GetLevelResponse = await fetch("https://api.t2.drycactus.com/v1/" + "viewer/stream/" + twitch.streamerID + "/pull?delay=0",
@@ -152,17 +150,7 @@ async function submitSlot(){
     console.log(levelHash)
     //let gzip_payload = new FormData();
     //gzip_payload.append("content", new Blob(payloadBytes, {type: "binary"}))
-    let gzip_response = await fetch("./api/gzip",
-        {
-            method: "post",
-            headers: {
-                "Content-Type":"application/octet-stream"
-            },
-            body: payloadBytes
-        }
-    )
-    let gzipped_data = await gzip_response.arrayBuffer()
-    gzipped_data = new Uint8Array(gzipped_data)
+    let gzipped_data = pako.gzip(payloadBytes, {to: "binary"})
     console.log(gzipped_data)
     console.log("Recieved gzipped data.")
 
@@ -190,4 +178,232 @@ async function submitSlot(){
         alert("an error occured: " + sendBridgeResponse)
     }
     
+}
+
+
+function distanceBetween(p1, p2){
+    return Math.sqrt((p1.y-p2.y)**2+(p1.x-p2.x)**2)
+}
+
+
+// slot viewer
+let material_names = [
+    null,
+    "Road", "Reinforced Road", "Wood",
+    "Steel", "Hydraulics", "Rope",
+    "Cable", "Bungee Rope", "Spring"
+]
+let material_colors = [
+    null, 
+    "#5d4335", "#af621f", "#e3b06e",
+    "#ba5d61", "#0966d6", "#8f6017",
+    "#2f2f34", "#000000", "#d0af00"
+]
+let material_widths = [
+    null,
+    0.16, 0.16, 0.10,
+    0.14, 0.14, 0.08,
+    0.06, 0.14, 0.16
+]
+let material_cost_per_meter = [
+    null,
+    200, 400, 180,
+    450, 750, 220,
+    400, 000, 330
+]
+let material_total_lengths = [
+    null, 
+    0, 0, 0,
+    0, 0, 0,
+    0, 0, 0
+]
+
+function mapBridgeToCanvas(canvas, bottom_left, top_right){
+    let res = {
+        scale: 1,
+        offset: new Vector(0,0),
+        WorldToCameraPos: function (point){
+            let response = new Vector(point)
+            response.x = response.x*this.scale+this.offset.x
+            response.y = response.y*(-this.scale)+this.offset.y
+            return response
+        },
+        left: bottom_left.x,
+        right: top_right.x,
+        bottom: bottom_left.y,
+        top: top_right.y
+    }
+    let x_scale = canvas.width/Math.abs(bottom_left.x-top_right.x)
+    let y_scale = canvas.height/Math.abs(bottom_left.y-top_right.y)
+    res.scale = Math.min(x_scale, y_scale)
+    res.offset.x = - (bottom_left.x * res.scale)
+    res.offset.y = canvas.height - (bottom_left.y * -res.scale)
+    return res
+}
+
+
+function drawCircle(context, position, radius, fill=false, startAngle=0, endAngle=360){
+    let pos = canvasController.WorldToCameraPos(position)
+    context.beginPath()
+    context.arc(pos.x, pos.y, canvasController.scale*radius, startAngle/180 * Math.PI, endAngle/180 * Math.PI)
+    if (fill) {
+        context.fill()
+    }
+    else {
+        context.stroke()
+    }
+}
+function drawLine(context, p1, p2, width=0.1){
+    p1 = canvasController.WorldToCameraPos(p1)
+    p2 = canvasController.WorldToCameraPos(p2)
+    context.lineWidth = width*canvasController.scale
+    context.beginPath();
+    context.moveTo(p1.x, p1.y);
+    context.lineTo(p2.x, p2.y);
+    context.stroke();
+}
+
+function drawRect(context, position, width, height, fill=false){
+    let pos = canvasController.WorldToCameraPos(position)
+    if (fill) {
+        context.fillRect(pos.x, pos.y, canvasController.scale*width, canvasController.scale*height)
+    }
+    else {
+        context.strokeRect(pos.x, pos.y, canvasController.scale*width, canvasController.scale*height)
+    }
+}
+
+function drawSquare(context, position, radius, fill=false){
+    let pos = canvasController.WorldToCameraPos(position)
+    
+    if (fill) {
+        context.fillRect(pos.x-(canvasController.scale*radius), pos.y-(canvasController.scale*radius), canvasController.scale*radius*2, canvasController.scale*radius*2)
+    }
+    else {
+        context.strokeRect(pos.x-(canvasController.scale*radius), pos.y-(canvasController.scale*radius), canvasController.scale*radius*2, canvasController.scale*radius*2)
+    }
+}
+
+
+
+function drawNode(context, node){
+    context.fillStyle = "yellow"
+    context.strokeStyle = "black"
+    context.lineWidth = 0.01*canvasController.scale
+    drawCircle(context, node.m_Pos, 0.1, true)
+    if (node.m_IsSplit){
+        context.fillStyle = "#29f811"
+        drawCircle(context, node.m_Pos, 0.1, true, 270, 90)
+        drawLine(context, new Vector(node.m_Pos).sub(new Vector(0,0.1)), new Vector(node.m_Pos).add(new Vector(0,0.1)), 0.01)
+    }
+    drawCircle(context, node.m_Pos, 0.1)
+}
+
+function drawAnchor(context, anchor){
+    context.fillStyle = "red"
+    context.strokeStyle = "black"
+    context.lineWidth = 0.01*canvasController.scale
+    if (anchor.m_IsSplit){
+        drawRect(context, new Vector(anchor.m_Pos).add(new Vector(-0.1,0.1)), 0.1, 0.2, true)
+        context.fillStyle = "#29f811"
+        drawCircle(context, anchor.m_Pos, 0.1, true, 270, 90)
+        drawCircle(context, anchor.m_Pos, 0.1, false, 270, 90)
+    }
+    else {
+        drawSquare(context, anchor.m_Pos, 0.1, true)
+        drawSquare(context, anchor.m_Pos, 0.1)
+    }
+}
+
+function drawEdge(context, edge){
+    // find positions
+    let p1 = new Vector(), p2 = new Vector()
+    slot_stored.m_BridgeJoints.concat(slot_stored.m_Anchors).forEach(joint => {
+        if (joint.m_Guid == edge.m_NodeA_Guid){
+            p1 = joint.m_Pos
+        }
+    })
+    slot_stored.m_BridgeJoints.concat(slot_stored.m_Anchors).forEach(joint => {
+        if (joint.m_Guid == edge.m_NodeB_Guid){
+            p2 = joint.m_Pos
+        }
+    })
+    context.strokeStyle = material_colors[edge.m_Material]
+    drawLine(context, p1, p2, material_widths[edge.m_Material])
+}
+
+function calcLength(edge){
+    let p1 = new Vector(), p2 = new Vector()
+    slot_stored.m_BridgeJoints.concat(slot_stored.m_Anchors).forEach(joint => {
+        if (joint.m_Guid == edge.m_NodeA_Guid){
+            p1 = joint.m_Pos
+        }
+    })
+    slot_stored.m_BridgeJoints.concat(slot_stored.m_Anchors).forEach(joint => {
+        if (joint.m_Guid == edge.m_NodeB_Guid){
+            p2 = joint.m_Pos
+        }
+    })
+    material_total_lengths[edge.m_Material] += distanceBetween(p1,p2)
+}
+
+
+var container = document.getElementById("container")
+var canvas = document.getElementById("canV"); 
+var ctx = canvas.getContext("2d");
+var summary = document.getElementById("slot_summary")
+
+function recreateCanvasController(){
+    let left = Infinity, right = -Infinity, top = -Infinity, bottom = Infinity
+    slot_stored.m_BridgeJoints.concat(slot_stored.m_Anchors).forEach(joint => {
+        left = joint.m_Pos.x < left ? joint.m_Pos.x : left
+        right = joint.m_Pos.x > right ? joint.m_Pos.x : right
+        top = joint.m_Pos.y > top ? joint.m_Pos.y : top
+        bottom = joint.m_Pos.y < bottom ? joint.m_Pos.y : bottom
+    })
+    return mapBridgeToCanvas(canvas, new Vector(left-1, bottom-1), new Vector(right+1, top+1))
+}
+let canvasController = recreateCanvasController()
+updateCanvas()
+function updateCanvas(){
+    // fill background
+    ctx.fillStyle = "#283c64"
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // calculate prices
+    material_total_lengths = [null,0,0,0,0,0,0,0,0,0]
+    slot_stored.m_BridgeEdges.forEach(edge => {
+        calcLength(edge)
+    })
+    while (summary.rows.length > 1){
+        summary.deleteRow(1)
+    }
+    let totalCost = 0
+    for (var i in material_names){
+        if (i == 0) continue;
+        let row = summary.insertRow()
+        row.insertCell().textContent = material_names[i]
+        row.insertCell().textContent = material_total_lengths[i].toFixed(2) + "m"
+        totalCost += material_total_lengths[i]*material_cost_per_meter[i]
+        row.insertCell().textContent = "$" + (material_total_lengths[i]*material_cost_per_meter[i]).toFixed(2)
+    }
+    let row = summary.insertRow()
+    row.insertCell().textContent = "Total"
+    row.insertCell().textContent =  material_total_lengths.reduce((a, b) => a + b, 0).toFixed(2) + "m"
+
+    row.insertCell().textContent = "$" + totalCost.toFixed(2)
+
+    // edges
+    slot_stored.m_BridgeEdges.forEach(edge => {
+        drawEdge(ctx, edge)
+    })
+    // joints
+    slot_stored.m_BridgeJoints.forEach(joint => {
+        drawNode(ctx, joint)
+    })
+
+    // anchors
+    slot_stored.m_Anchors.forEach(anchor => {
+        drawAnchor(ctx, anchor)
+    })
 }

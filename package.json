@@ -10,6 +10,8 @@
   "author": "Conqu3red",
   "license": "ISC",
   "dependencies": {
+    "@panzoom/panzoom": "^4.3.2",
+    "body-parser": "^1.19.0",
     "express": "^4.17.1",
     "pako": "^2.0.3"
   }
