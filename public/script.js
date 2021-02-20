@@ -81,7 +81,7 @@ function processSlot(data){
     let slot = BridgeSaveData.DeserializeBinary(data)
     console.log("Deserialised slot file")
     slot_stored = slot
-    canvasController = recreateCanvasController()
+    recreateCanvasController()
     updateCanvas()
     //console.log(slot)
     //let serialised = slot.SerializeBinary()
@@ -187,6 +187,32 @@ function distanceBetween(p1, p2){
 
 
 // slot viewer
+
+HTMLCanvasElement.prototype.getPointClicked = function (event) {
+    var totalOffsetX = 0;
+    var totalOffsetY = 0;
+    var canvasX = 0;
+    var canvasY = 0;
+    var currentElement = this;
+
+    do {
+        totalOffsetX += currentElement.offsetLeft;
+        totalOffsetY += currentElement.offsetTop;
+    }
+    while (currentElement = currentElement.offsetParent)
+
+    canvasX = event.pageX - totalOffsetX;
+    canvasY = event.pageY - totalOffsetY;
+
+    // Fix for variable canvas width
+    canvasX = Math.round( canvasX * (this.width / this.offsetWidth) );
+    canvasY = Math.round( canvasY * (this.height / this.offsetHeight) );
+
+    return new Vector(canvasX, canvasY)
+}
+
+
+
 let material_names = [
     null,
     "Road", "Reinforced Road", "Wood",
@@ -219,26 +245,11 @@ let material_total_lengths = [
 ]
 
 function mapBridgeToCanvas(canvas, bottom_left, top_right){
-    let res = {
-        scale: 1,
-        offset: new Vector(0,0),
-        WorldToCameraPos: function (point){
-            let response = new Vector(point)
-            response.x = response.x*this.scale+this.offset.x
-            response.y = response.y*(-this.scale)+this.offset.y
-            return response
-        },
-        left: bottom_left.x,
-        right: top_right.x,
-        bottom: bottom_left.y,
-        top: top_right.y
-    }
     let x_scale = canvas.width/Math.abs(bottom_left.x-top_right.x)
     let y_scale = canvas.height/Math.abs(bottom_left.y-top_right.y)
-    res.scale = Math.min(x_scale, y_scale)
-    res.offset.x = - (bottom_left.x * res.scale)
-    res.offset.y = canvas.height - (bottom_left.y * -res.scale)
-    return res
+    canvasController.scale = Math.min(x_scale, y_scale)
+    canvasController.offset.x = - (bottom_left.x * canvasController.scale)
+    canvasController.offset.y = canvas.height - (bottom_left.y * -canvasController.scale)
 }
 
 
@@ -305,6 +316,7 @@ function drawAnchor(context, anchor){
     context.lineWidth = 0.01*canvasController.scale
     if (anchor.m_IsSplit){
         drawRect(context, new Vector(anchor.m_Pos).add(new Vector(-0.1,0.1)), 0.1, 0.2, true)
+        drawRect(context, new Vector(anchor.m_Pos).add(new Vector(-0.1,0.1)), 0.1, 0.2, false)
         context.fillStyle = "#29f811"
         drawCircle(context, anchor.m_Pos, 0.1, true, 270, 90)
         drawCircle(context, anchor.m_Pos, 0.1, false, 270, 90)
@@ -361,10 +373,74 @@ function recreateCanvasController(){
         top = joint.m_Pos.y > top ? joint.m_Pos.y : top
         bottom = joint.m_Pos.y < bottom ? joint.m_Pos.y : bottom
     })
-    return mapBridgeToCanvas(canvas, new Vector(left-1, bottom-1), new Vector(right+1, top+1))
+    mapBridgeToCanvas(canvas, new Vector(left-1, bottom-1), new Vector(right+1, top+1))
 }
-let canvasController = recreateCanvasController()
+let canvasController = {
+    scale: 1,
+    offset: new Vector(0,0),
+    WorldToCameraPos: function (point){
+        let response = new Vector(point)
+        response.x = response.x*this.scale+this.offset.x
+        response.y = response.y*(-this.scale)+this.offset.y
+        return response
+    }
+}
+recreateCanvasController()
+
 updateCanvas()
+
+let movementHandler = {
+    leftMouseButtonPressed: false,
+    prevPos: new Vector(),
+    mobilePrevScale: 0
+}
+canvas.addEventListener("mousedown", e => {
+    //console.log("left click down")
+    if (e.button == 0){
+        movementHandler.prevPos = canvas.getPointClicked(e)
+        movementHandler.leftMouseButtonPressed = true
+    }
+})
+canvas.addEventListener("mouseup", e => {
+    //console.log(canvas.getPointClicked(e))
+    //console.log("left click up")
+    if (e.button == 0) movementHandler.leftMouseButtonPressed = false
+})
+canvas.addEventListener("mousemove", e => {
+    if (movementHandler.leftMouseButtonPressed){
+        canvasController.offset.add(canvas.getPointClicked(e).sub(movementHandler.prevPos))
+        movementHandler.prevPos = canvas.getPointClicked(e)
+    }
+    //console.log(e)
+})
+canvas.onwheel = e => {
+    e.preventDefault();
+    canvasController.scale -= e.deltaY/50
+}
+canvas.ontouchstart = e => {
+    e.preventDefault();
+    movementHandler.prevPos = canvas.getPointClicked(e)
+    //console.info(movementHandler.prevPos.x + " " + movementHandler.prevPos.y)
+    movementHandler.leftMouseButtonPressed = true
+}
+canvas.ontouchmove = e => {
+    if (movementHandler.leftMouseButtonPressed){
+        canvasController.offset.add(canvas.getPointClicked(e).sub(movementHandler.prevPos))
+        movementHandler.prevPos = canvas.getPointClicked(e)
+    }
+}
+canvas.ontouchend = e => {
+    movementHandler.leftMouseButtonPressed = false
+}
+canvas.ongesturestart = e => {
+    movementHandler.mobilePrevScale = e.scale
+}
+canvas.ongesturechange = e => {
+    canvasController.scale += (e.scale-movementHandler.mobilePrevScale)*100
+    movementHandler.mobilePrevScale = e.scale
+}
+
+
 function updateCanvas(){
     // fill background
     ctx.fillStyle = "#283c64"
@@ -383,15 +459,15 @@ function updateCanvas(){
         if (i == 0) continue;
         let row = summary.insertRow()
         row.insertCell().textContent = material_names[i]
-        row.insertCell().textContent = material_total_lengths[i].toFixed(2) + "m"
+        row.insertCell().textContent = material_total_lengths[i].toLocaleString() + "m"
         totalCost += material_total_lengths[i]*material_cost_per_meter[i]
-        row.insertCell().textContent = "$" + (material_total_lengths[i]*material_cost_per_meter[i]).toFixed(2)
+        row.insertCell().textContent = "$" + (material_total_lengths[i]*material_cost_per_meter[i]).toLocaleString()
     }
     let row = summary.insertRow()
     row.insertCell().textContent = "Total"
-    row.insertCell().textContent =  material_total_lengths.reduce((a, b) => a + b, 0).toFixed(2) + "m"
+    row.insertCell().textContent =  material_total_lengths.reduce((a, b) => a + b, 0).toLocaleString() + "m"
 
-    row.insertCell().textContent = "$" + totalCost.toFixed(2)
+    row.insertCell().textContent = "$" + totalCost.toLocaleString()
 
     // edges
     slot_stored.m_BridgeEdges.forEach(edge => {
@@ -407,3 +483,5 @@ function updateCanvas(){
         drawAnchor(ctx, anchor)
     })
 }
+
+setInterval(updateCanvas, 50)
